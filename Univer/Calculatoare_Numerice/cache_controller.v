@@ -140,24 +140,27 @@ always @(posedge clk or posedge rst) begin
             end
             
             READ_HIT: begin
-                data_out <= data_lines[input_set_idx*NUM_WAYS + hit_way_idx][input_word_offset*32 +: 32];
-                lru_timestamps[input_set_idx*NUM_WAYS + hit_way_idx] <= age_timestamp_global;
+                //modified from here - use consistent indexing with current_set_idx instead of input_set_idx
+                data_out <= data_lines[current_set_idx*NUM_WAYS + hit_way_idx][current_word_offset*32 +: 32];
+                lru_timestamps[current_set_idx*NUM_WAYS + hit_way_idx] <= age_timestamp_global;
+                //stopped modifying here
                 age_timestamp_global <= age_timestamp_global + 1;
                 ready <= 1'b1;
                 next_state <= IDLE;
             end
             
             WRITE_HIT: begin
-                data_lines[input_set_idx*NUM_WAYS + hit_way_idx][input_word_offset*32 +: 32] <= current_data_in_reg;
-                dirty[input_set_idx*NUM_WAYS + hit_way_idx] <= 1'b1;
-                lru_timestamps[input_set_idx*NUM_WAYS + hit_way_idx] <= age_timestamp_global;
+                //modified from here - use consistent indexing with current_set_idx
+                data_lines[current_set_idx*NUM_WAYS + hit_way_idx][current_word_offset*32 +: 32] <= current_data_in_reg;
+                dirty[current_set_idx*NUM_WAYS + hit_way_idx] <= 1'b1;
+                lru_timestamps[current_set_idx*NUM_WAYS + hit_way_idx] <= age_timestamp_global;
+                //stopped modifying here
                 age_timestamp_global <= age_timestamp_global + 1;
                 ready <= 1'b1;
                 next_state <= IDLE;
             end
             
             READ_MISS, WRITE_MISS: begin
-                //modified from here - fix victim selection logic to avoid multiple assignments
                 // Find invalid way first using explicit if-else chain
                 if (!valid[current_set_idx*NUM_WAYS + 0]) begin
                     victim_way_idx <= 2'b00;
@@ -182,7 +185,6 @@ always @(posedge clk or posedge rst) begin
                         victim_way_idx <= 2'b11;
                     end
                 end
-                //stopped modifying here
                 
                 if (valid[current_set_idx*NUM_WAYS + victim_way_idx] && 
                     dirty[current_set_idx*NUM_WAYS + victim_way_idx]) begin
@@ -213,16 +215,17 @@ always @(posedge clk or posedge rst) begin
                     valid[current_set_idx*NUM_WAYS + victim_way_idx] <= 1'b1;
                     dirty[current_set_idx*NUM_WAYS + victim_way_idx] <= 1'b0;
                     
+                    //modified from here - fix data initialization to use word-aligned base address
+                    // Initialize with predictable pattern - word 0 gets base address, word 1 gets base+4, etc.
+                    reg [31:0] base_addr;
+                    base_addr = current_address_reg & 32'hFFFFFFC0; // Block-aligned base address
                     data_lines[current_set_idx*NUM_WAYS + victim_way_idx] <= {
-                        current_address_reg + 60, current_address_reg + 56,
-                        current_address_reg + 52, current_address_reg + 48,
-                        current_address_reg + 44, current_address_reg + 40,
-                        current_address_reg + 36, current_address_reg + 32,
-                        current_address_reg + 28, current_address_reg + 24,
-                        current_address_reg + 20, current_address_reg + 16,
-                        current_address_reg + 12, current_address_reg + 8,
-                        current_address_reg + 4,  current_address_reg
+                        base_addr + 60, base_addr + 56, base_addr + 52, base_addr + 48,
+                        base_addr + 44, base_addr + 40, base_addr + 36, base_addr + 32,
+                        base_addr + 28, base_addr + 24, base_addr + 20, base_addr + 16,
+                        base_addr + 12, base_addr + 8,  base_addr + 4,  base_addr
                     };
+                    //stopped modifying here
                     
                     lru_timestamps[current_set_idx*NUM_WAYS + victim_way_idx] <= age_timestamp_global;
                     age_timestamp_global <= age_timestamp_global + 1;
