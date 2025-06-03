@@ -1,6 +1,5 @@
 // cache_controller.v
 
-
 `timescale 1ns/1ps
 
 module cache_controller(
@@ -60,11 +59,46 @@ reg [4:0] mem_access_delay_counter;
 
 // Helper variables
 integer i;
-//modified from here - moved hit detection to combinational block
 reg hit_found;
-//stopped modifying here
 
-// Address parsing (combinational)
+// Address parsing for current address input (for hit detection)
+wire [TAG_BITS-1:0] input_tag = address[31:13];
+wire [SET_INDEX_BITS-1:0] input_set_idx = address[12:6];
+wire [OFFSET_BITS-1:0] input_offset = address[5:0];
+wire [3:0] input_word_offset = address[5:2];
+
+// Hit detection using current address input (not latched)
+always @(*) begin
+    hit_found = 1'b0;
+    hit_way_idx = 2'b00;
+    
+    // Check way 0
+    if (valid[input_set_idx*NUM_WAYS + 0] && 
+        (tags[input_set_idx*NUM_WAYS + 0] == input_tag)) begin
+        hit_found = 1'b1;
+        hit_way_idx = 2'b00;
+    end
+    // Check way 1  
+    else if (valid[input_set_idx*NUM_WAYS + 1] && 
+             (tags[input_set_idx*NUM_WAYS + 1] == input_tag)) begin
+        hit_found = 1'b1;
+        hit_way_idx = 2'b01;
+    end
+    // Check way 2
+    else if (valid[input_set_idx*NUM_WAYS + 2] && 
+             (tags[input_set_idx*NUM_WAYS + 2] == input_tag)) begin
+        hit_found = 1'b1;
+        hit_way_idx = 2'b10;
+    end
+    // Check way 3
+    else if (valid[input_set_idx*NUM_WAYS + 3] && 
+             (tags[input_set_idx*NUM_WAYS + 3] == input_tag)) begin
+        hit_found = 1'b1;
+        hit_way_idx = 2'b11;
+    end
+end
+
+// Address parsing for latched address (for cache operations)
 always @(*) begin
     current_tag = current_address_reg[31:13];
     current_set_idx = current_address_reg[12:6];
@@ -72,44 +106,13 @@ always @(*) begin
     current_word_offset = current_address_reg[5:2];
 end
 
-//modified from here - separate combinational hit detection
-always @(*) begin
-    hit_found = 1'b0;
-    hit_way_idx = 2'b00;
-    
-    // Check way 0
-    if (valid[current_set_idx*NUM_WAYS + 0] && 
-        (tags[current_set_idx*NUM_WAYS + 0] == current_tag)) begin
-        hit_found = 1'b1;
-        hit_way_idx = 2'b00;
-    end
-    // Check way 1  
-    else if (valid[current_set_idx*NUM_WAYS + 1] && 
-             (tags[current_set_idx*NUM_WAYS + 1] == current_tag)) begin
-        hit_found = 1'b1;
-        hit_way_idx = 2'b01;
-    end
-    // Check way 2
-    else if (valid[current_set_idx*NUM_WAYS + 2] && 
-             (tags[current_set_idx*NUM_WAYS + 2] == current_tag)) begin
-        hit_found = 1'b1;
-        hit_way_idx = 2'b10;
-    end
-    // Check way 3
-    else if (valid[current_set_idx*NUM_WAYS + 3] && 
-             (tags[current_set_idx*NUM_WAYS + 3] == current_tag)) begin
-        hit_found = 1'b1;
-        hit_way_idx = 2'b11;
-    end
-end
-//stopped modifying here
-
 // Main FSM
 always @(posedge clk or posedge rst) begin
     if (rst) begin
         current_state <= IDLE;
         ready <= 1'b0;
         age_timestamp_global <= 16'b0;
+        data_out <= 32'h0;
         
         for (i = 0; i < NUM_SETS*NUM_WAYS; i = i + 1) begin
             valid[i] <= 1'b0;
@@ -125,62 +128,61 @@ always @(posedge clk or posedge rst) begin
         
         case (current_state)
             IDLE: begin
-                //modified from here - simplified IDLE state
                 current_address_reg <= address;
                 current_data_in_reg <= data_in;
                 current_rw_reg <= rw;
                 
-                // State transition based on hit_found (calculated combinationally)
                 if (hit_found) begin
                     next_state <= (rw ? WRITE_HIT : READ_HIT);
                 end else begin
                     next_state <= (rw ? WRITE_MISS : READ_MISS);
                 end
-                //stopped modifying here
             end
             
             READ_HIT: begin
-                data_out <= data_lines[current_set_idx*NUM_WAYS + hit_way_idx][current_word_offset*32 +: 32];
-                lru_timestamps[current_set_idx*NUM_WAYS + hit_way_idx] <= age_timestamp_global;
+                data_out <= data_lines[input_set_idx*NUM_WAYS + hit_way_idx][input_word_offset*32 +: 32];
+                lru_timestamps[input_set_idx*NUM_WAYS + hit_way_idx] <= age_timestamp_global;
                 age_timestamp_global <= age_timestamp_global + 1;
                 ready <= 1'b1;
                 next_state <= IDLE;
             end
             
             WRITE_HIT: begin
-                data_lines[current_set_idx*NUM_WAYS + hit_way_idx][current_word_offset*32 +: 32] <= current_data_in_reg;
-                dirty[current_set_idx*NUM_WAYS + hit_way_idx] <= 1'b1;
-                lru_timestamps[current_set_idx*NUM_WAYS + hit_way_idx] <= age_timestamp_global;
+                data_lines[input_set_idx*NUM_WAYS + hit_way_idx][input_word_offset*32 +: 32] <= current_data_in_reg;
+                dirty[input_set_idx*NUM_WAYS + hit_way_idx] <= 1'b1;
+                lru_timestamps[input_set_idx*NUM_WAYS + hit_way_idx] <= age_timestamp_global;
                 age_timestamp_global <= age_timestamp_global + 1;
                 ready <= 1'b1;
                 next_state <= IDLE;
             end
             
             READ_MISS, WRITE_MISS: begin
-                victim_way_idx <= 2'b00;
-                
-                for (i = 0; i < NUM_WAYS; i = i + 1) begin
-                    if (!valid[current_set_idx*NUM_WAYS + i]) begin
-                        victim_way_idx <= i;
-                    end
-                end
-                
-                if (valid[current_set_idx*NUM_WAYS + 0] && 
-                    valid[current_set_idx*NUM_WAYS + 1] && 
-                    valid[current_set_idx*NUM_WAYS + 2] && 
-                    valid[current_set_idx*NUM_WAYS + 3]) begin
-                    
-                    reg [15:0] min_timestamp;
-                    min_timestamp = lru_timestamps[current_set_idx*NUM_WAYS + 0];
+                //modified from here - fix victim selection logic to avoid multiple assignments
+                // Find invalid way first using explicit if-else chain
+                if (!valid[current_set_idx*NUM_WAYS + 0]) begin
                     victim_way_idx <= 2'b00;
-                    
-                    for (i = 1; i < NUM_WAYS; i = i + 1) begin
-                        if (lru_timestamps[current_set_idx*NUM_WAYS + i] < min_timestamp) begin
-                            min_timestamp = lru_timestamps[current_set_idx*NUM_WAYS + i];
-                            victim_way_idx <= i;
-                        end
+                end else if (!valid[current_set_idx*NUM_WAYS + 1]) begin
+                    victim_way_idx <= 2'b01;
+                end else if (!valid[current_set_idx*NUM_WAYS + 2]) begin
+                    victim_way_idx <= 2'b10;
+                end else if (!valid[current_set_idx*NUM_WAYS + 3]) begin
+                    victim_way_idx <= 2'b11;
+                end else begin
+                    // All valid, find LRU using explicit comparisons
+                    if ((lru_timestamps[current_set_idx*NUM_WAYS + 0] <= lru_timestamps[current_set_idx*NUM_WAYS + 1]) &&
+                        (lru_timestamps[current_set_idx*NUM_WAYS + 0] <= lru_timestamps[current_set_idx*NUM_WAYS + 2]) &&
+                        (lru_timestamps[current_set_idx*NUM_WAYS + 0] <= lru_timestamps[current_set_idx*NUM_WAYS + 3])) begin
+                        victim_way_idx <= 2'b00;
+                    end else if ((lru_timestamps[current_set_idx*NUM_WAYS + 1] <= lru_timestamps[current_set_idx*NUM_WAYS + 2]) &&
+                                 (lru_timestamps[current_set_idx*NUM_WAYS + 1] <= lru_timestamps[current_set_idx*NUM_WAYS + 3])) begin
+                        victim_way_idx <= 2'b01;
+                    end else if (lru_timestamps[current_set_idx*NUM_WAYS + 2] <= lru_timestamps[current_set_idx*NUM_WAYS + 3]) begin
+                        victim_way_idx <= 2'b10;
+                    end else begin
+                        victim_way_idx <= 2'b11;
                     end
                 end
+                //stopped modifying here
                 
                 if (valid[current_set_idx*NUM_WAYS + victim_way_idx] && 
                     dirty[current_set_idx*NUM_WAYS + victim_way_idx]) begin

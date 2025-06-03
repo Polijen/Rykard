@@ -96,7 +96,6 @@ module tb_cache;
         $display("Hit Rate:       %0.2f%%", hit_rate);
         
         // ADD THIS LINE - $finish terminates simulation properly
-        $stop;
         #10 $finish;
     end
     
@@ -112,12 +111,13 @@ module tb_cache;
             address = op_addr;
             data_in = op_wdata;
             rw = op_rw;
-            
-            // Wait for ready
+        
+            // Wait for ready and capture state before it changes
             wait(ready == 1'b1);
+            // Sample state at the same clock edge as ready assertion, before FSM transitions
+            @(posedge clk); 
             final_state = dut.current_state;
-            //@(negedge clk); //problem ??
-            @(posedge clk);
+            @(negedge clk); // Align for next test
             
             total_access = total_access + 1;
             
@@ -163,5 +163,16 @@ vsim -c -do "run -all" work.tb_cache
 
 # For GUI with persistent session:
 vsim -onfinish stop work.tb_cache
+
+
+//new way 
+
+vlib work
+vlog cache_controller.v tb_cache.v
+
+# This keeps ModelSim open without breaking
+vsim -onfinish stop -c work.tb_cache
+run -all
+
 
 */
