@@ -1,3 +1,6 @@
+// tb_cache.v
+
+
 `timescale 1ns/1ps
 
 module tb_cache;
@@ -113,7 +116,8 @@ module tb_cache;
             // Wait for ready
             wait(ready == 1'b1);
             final_state = dut.current_state;
-            @(negedge clk);
+            //@(negedge clk); //problem ??
+            @(posedge clk);
             
             total_access = total_access + 1;
             
