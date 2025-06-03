@@ -56,7 +56,7 @@ reg [3:0] current_word_offset;
 reg [1:0] hit_way_idx;
 reg [1:0] victim_way_idx;
 reg [4:0] mem_access_delay_counter;
-
+reg [31:0] base_addr;
 // Helper variables
 integer i;
 reg hit_found;
@@ -217,7 +217,7 @@ always @(posedge clk or posedge rst) begin
                     
                     //modified from here - fix data initialization to use word-aligned base address
                     // Initialize with predictable pattern - word 0 gets base address, word 1 gets base+4, etc.
-                    reg [31:0] base_addr;
+                    
                     base_addr = current_address_reg & 32'hFFFFFFC0; // Block-aligned base address
                     data_lines[current_set_idx*NUM_WAYS + victim_way_idx] <= {
                         base_addr + 60, base_addr + 56, base_addr + 52, base_addr + 48,
