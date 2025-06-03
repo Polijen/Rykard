@@ -1,5 +1,3 @@
-Best output for data: 
-
 # Starting cache controller tests...
 # Test 1: Write to 0x80000000 (expect miss)
 #   Write 0x80000000 = 0x12345678 (State: 110)
@@ -36,4 +34,3 @@ Best output for data:
 # Hit Rate:       33.33%
 # ** Note: $finish    : tb_cache.v(99)
 #    Time: 1900 ns  Iteration: 0  Instance: /tb_cache
-# Break in Module tb_cache at tb_cache.v line 99
