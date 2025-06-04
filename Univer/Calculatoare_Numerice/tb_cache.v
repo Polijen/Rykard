@@ -1,6 +1,5 @@
 // tb_cache.v
 
-
 `timescale 1ns/1ps
 
 module tb_cache;
@@ -54,33 +53,48 @@ module tb_cache;
         
         // Test sequence
         $display("Starting cache controller tests...");
+        $display("=================================");
         
         // Test 1: Write miss
         $display("Test 1: Write to 0x80000000 (expect miss)");
         test_access(1'b1, 32'h80000000, 32'h12345678, 32'hx);
         
-        // Test 2: Read hit
+        // Test 2: Read hit (same address)
         $display("Test 2: Read from 0x80000000 (expect hit)");
         test_access(1'b0, 32'h80000000, 32'hx, 32'h12345678);
         
         // Test 3: Write to different word in same block
-        $display("Test 3: Write to 0x80000004 (expect hit)");
+        $display("Test 3: Write to 0x80000004 (expect hit - same block)");
         test_access(1'b1, 32'h80000004, 32'hAABBCCDD, 32'hx);
         
         // Test 4: Read the new word
         $display("Test 4: Read from 0x80000004 (expect hit)");
         test_access(1'b0, 32'h80000004, 32'hx, 32'hAABBCCDD);
         
-        // Test 5: LRU test - fill cache set
-        $display("Test 5: LRU eviction test");
-        test_access(1'b1, 32'h80008000, 32'hCAFE0001, 32'hx);
-        test_access(1'b1, 32'h80010000, 32'hBEEF0002, 32'hx);
-        test_access(1'b1, 32'h80018000, 32'hFACE0003, 32'hx);
-        test_access(1'b1, 32'h80020000, 32'hDEAD0004, 32'hx);
+        // Test 5: Read miss from different block
+        $display("Test 5: Read from 0x80000040 (expect miss - different block)");
+        test_access(1'b0, 32'h80000040, 32'hx, 32'h80000040);
         
-        // Test 6: Verify eviction
-        $display("Test 6: Read evicted data (expect miss)");
+        // Test 6: LRU test - fill cache set 0 with 4 different blocks
+        $display("Test 6: Fill cache set 0 with 4 blocks (LRU test)");
+        test_access(1'b1, 32'h80002000, 32'hCAFE0001, 32'hx); // Block 1
+        test_access(1'b1, 32'h80004000, 32'hBEEF0002, 32'hx); // Block 2  
+        test_access(1'b1, 32'h80006000, 32'hFACE0003, 32'hx); // Block 3
+        test_access(1'b1, 32'h80008000, 32'hDEAD0004, 32'hx); // Block 4 (should evict first block)
+        
+        // Test 7: Verify first block was evicted (LRU)
+        $display("Test 7: Read from first block (expect miss - evicted)");
         test_access(1'b0, 32'h80000000, 32'hx, 32'h80000000);
+        
+        // Test 8: Write-back test - modify and evict dirty block
+        $display("Test 8: Write-back test");
+        test_access(1'b1, 32'h8000A000, 32'hDEADBEEF, 32'hx); // Should evict and write back dirty block
+        
+        // Test 9: Read from multiple words in same block
+        $display("Test 9: Test multiple words in same block");
+        test_access(1'b0, 32'h8000A004, 32'hx, 32'h8000A004);
+        test_access(1'b0, 32'h8000A008, 32'hx, 32'h8000A008);
+        test_access(1'b0, 32'h8000A00C, 32'hx, 32'h8000A00C);
         
         // Performance report
         if (total_access > 0) begin
@@ -94,12 +108,17 @@ module tb_cache;
         $display("Cache Hits:     %0d", hit_count);
         $display("Cache Misses:   %0d", total_access - hit_count);
         $display("Hit Rate:       %0.2f%%", hit_rate);
+        $display("===============================");
         
-        // ADD THIS LINE - $finish terminates simulation properly
+        if (hit_rate > 50.0) begin
+            $display("PASS: Cache hit rate is reasonable");
+        end else begin
+            $display("WARNING: Low cache hit rate");
+        end
+        
         #10 $finish;
     end
     
-    // Test access task (keep your existing task)
     task test_access;
         input op_rw;
         input [31:0] op_addr;
@@ -112,12 +131,11 @@ module tb_cache;
             data_in = op_wdata;
             rw = op_rw;
         
-            // Wait for ready and capture state before it changes
+            // Wait for ready and capture state
             wait(ready == 1'b1);
-            // Sample state at the same clock edge as ready assertion, before FSM transitions
             @(posedge clk); 
             final_state = dut.current_state;
-            @(negedge clk); // Align for next test
+            @(negedge clk);
             
             total_access = total_access + 1;
             
@@ -149,7 +167,6 @@ endmodule
 
 
 
-
 /* Compilare
 
 # Create work library
@@ -170,7 +187,6 @@ vsim -onfinish stop work.tb_cache
 vlib work
 vlog cache_controller.v tb_cache.v
 
-# This keeps ModelSim open without breaking
 vsim -onfinish stop -c work.tb_cache
 run -all
 

@@ -214,10 +214,8 @@ always @(posedge clk or posedge rst) begin
                     tags[current_set_idx*NUM_WAYS + victim_way_idx] <= current_tag;
                     valid[current_set_idx*NUM_WAYS + victim_way_idx] <= 1'b1;
                     dirty[current_set_idx*NUM_WAYS + victim_way_idx] <= 1'b0;
-                    
-                    //modified from here - fix data initialization to use word-aligned base address
-                    // Initialize with predictable pattern - word 0 gets base address, word 1 gets base+4, etc.
-                    
+        
+                    // Initialize with predictable pattern
                     base_addr = current_address_reg & 32'hFFFFFFC0; // Block-aligned base address
                     data_lines[current_set_idx*NUM_WAYS + victim_way_idx] <= {
                         base_addr + 60, base_addr + 56, base_addr + 52, base_addr + 48,
@@ -225,18 +223,19 @@ always @(posedge clk or posedge rst) begin
                         base_addr + 28, base_addr + 24, base_addr + 20, base_addr + 16,
                         base_addr + 12, base_addr + 8,  base_addr + 4,  base_addr
                     };
-                    //stopped modifying here
-                    
+        
                     lru_timestamps[current_set_idx*NUM_WAYS + victim_way_idx] <= age_timestamp_global;
                     age_timestamp_global <= age_timestamp_global + 1;
-                    
+        
                     if (current_rw_reg) begin
+                        // Write miss: write the data and mark as dirty
                         data_lines[current_set_idx*NUM_WAYS + victim_way_idx][current_word_offset*32 +: 32] <= current_data_in_reg;
                         dirty[current_set_idx*NUM_WAYS + victim_way_idx] <= 1'b1;
                     end else begin
-                        data_out <= data_lines[current_set_idx*NUM_WAYS + victim_way_idx][current_word_offset*32 +: 32];
+                        // Read miss: output the fetched data
+                        data_out <= base_addr + (current_word_offset * 4);
                     end
-                    
+        
                     ready <= 1'b1;
                     next_state <= IDLE;
                 end
