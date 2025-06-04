@@ -1,4 +1,5 @@
 # Starting cache controller tests...
+# =================================
 # Test 1: Write to 0x80000000 (expect miss)
 #   Write 0x80000000 = 0x12345678 (State: 110)
 #   Cache MISS
@@ -6,31 +7,49 @@
 #   Read 0x80000000: Got 0xxxxxxxxx, Expected 0x12345678 (State: 001)
 #   ERROR: Data mismatch!
 #   Cache HIT
-# Test 3: Write to 0x80000004 (expect hit)
+# Test 3: Write to 0x80000004 (expect hit - same block)
 #   Write 0x80000004 = 0xaabbccdd (State: 011)
 #   Cache HIT
 # Test 4: Read from 0x80000004 (expect hit)
 #   Read 0x80000004: Got 0xxxxxxxxx, Expected 0xaabbccdd (State: 001)
 #   ERROR: Data mismatch!
 #   Cache HIT
-# Test 5: LRU eviction test
-#   Write 0x80008000 = 0xcafe0001 (State: 100)
-#   Cache MISS
-#   Write 0x80010000 = 0xbeef0002 (State: 110)
-#   Cache MISS
-#   Write 0x80018000 = 0xface0003 (State: 110)
-#   Cache MISS
-#   Write 0x80020000 = 0xdead0004 (State: 100)
-#   Cache MISS
-# Test 6: Read evicted data (expect miss)
-#   Read 0x80000000: Got 0xxxxxxxxx, Expected 0x80000000 (State: 110)
+# Test 5: Read from 0x80000040 (expect miss - different block)
+#   Read 0x80000040: Got 0x00000000, Expected 0x80000040 (State: 010)
 #   ERROR: Data mismatch!
 #   Cache MISS
+# Test 6: Fill cache set 0 with 4 blocks (LRU test)
+#   Write 0x80002000 = 0xcafe0001 (State: 110)
+#   Cache MISS
+#   Write 0x80004000 = 0xbeef0002 (State: 110)
+#   Cache MISS
+#   Write 0x80006000 = 0xface0003 (State: 100)
+#   Cache MISS
+#   Write 0x80008000 = 0xdead0004 (State: 110)
+#   Cache MISS
+# Test 7: Read from first block (expect miss - evicted)
+#   Read 0x80000000: Got 0xface0003, Expected 0x80000000 (State: 101)
+#   ERROR: Data mismatch!
+#   Cache MISS
+# Test 8: Write-back test
+#   Write 0x8000a000 = 0xdeadbeef (State: 101)
+#   Cache MISS
+# Test 9: Test multiple words in same block
+#   Read 0x8000a004: Got 0xface0003, Expected 0x8000a004 (State: 110)
+#   ERROR: Data mismatch!
+#   Cache MISS
+#   Read 0x8000a008: Got 0x8000a008, Expected 0x8000a008 (State: 001)
+#   Cache HIT
+#   Read 0x8000a00c: Got 0x8000a00c, Expected 0x8000a00c (State: 001)
+#   Cache HIT
 # 
 # === Performance Report ===
-# Total Accesses: 9
-# Cache Hits:     3
-# Cache Misses:   6
-# Hit Rate:       33.33%
-# ** Note: $finish    : tb_cache.v(99)
-#    Time: 1900 ns  Iteration: 0  Instance: /tb_cache
+# Total Accesses: 14
+# Cache Hits:     5
+# Cache Misses:   9
+# Hit Rate:       35.71%
+# ===============================
+# WARNING: Low cache hit rate
+# ** Note: $finish    : tb_cache.v(119)
+#    Time: 2320 ns  Iteration: 0  Instance: /tb_cache
+# Break in Module tb_cache at tb_cache.v line 119
